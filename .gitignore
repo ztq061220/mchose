@@ -1,0 +1,32 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+
+# PyInstaller
+build/
+build_*/
+dist/
+dist_*/
+*.spec.bak
+
+# Installer build output
+installer_build/payload.zip
+installer_build/*.exe
+release/
+
+# Local previews and logs
+preview/
+*.log
+*.bak
+*.bak-*
+
+# OS / editor
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+
+# Local installer tests
+install_test*/
