@@ -2,7 +2,6 @@
 
 一个 Windows 桌面小挂件：显示 MCHOSE HUB 与标准 BLE 外设的电量，并提供虚拟形象、云朵电量气泡和托盘驻留。
 
-![screenshot](docs/screenshot.png)
 
 ## 功能
 
