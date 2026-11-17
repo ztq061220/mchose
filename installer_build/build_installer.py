@@ -53,6 +53,7 @@ def build_payload() -> None:
 
 
 def compile_installer(csc: Path) -> None:
+    print(f"csc: {csc}")
     RELEASE.mkdir(parents=True, exist_ok=True)
     cmd = [
         str(csc),
@@ -71,7 +72,18 @@ def compile_installer(csc: Path) -> None:
         str(INSTALLER_CS),
     ]
     print("running:", subprocess.list2cmdline(cmd))
-    subprocess.run(cmd, check=True, cwd=str(ROOT))
+    result = subprocess.run(
+        cmd, cwd=str(ROOT), text=True, errors="replace",
+        stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+    )
+    if result.stdout:
+        print(result.stdout)
+    if result.stderr:
+        print(result.stderr, file=sys.stderr)
+    if result.returncode != 0:
+        detail = (result.stderr or result.stdout or "csc failed").strip().replace(chr(10), " ")[:1200]
+        print(f"::error title=csc failed::{detail}")
+        raise SystemExit(result.returncode)
     if COMPILE_OUTPUT != OUTPUT:
         if OUTPUT.exists():
             OUTPUT.unlink()
@@ -82,8 +94,14 @@ def compile_installer(csc: Path) -> None:
 
 
 def main() -> int:
-    build_payload()
-    compile_installer(find_csc())
+    try:
+        build_payload()
+        compile_installer(find_csc())
+    except Exception as exc:
+        import traceback
+        traceback.print_exc()
+        print(f"::error title=installer build::{str(exc)[:1200]}")
+        raise
     return 0
 
 
