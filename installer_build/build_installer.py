@@ -16,7 +16,7 @@ DIST = ROOT / "dist" / "MCHOSEBatteryWidget"
 PAYLOAD = ROOT / "installer_build" / "payload.zip"
 INSTALLER_CS = ROOT / "installer_build" / "Installer.cs"
 RELEASE = ROOT / "release"
-OUTPUT = RELEASE / "桌面外设电量_安装程序_v1.6.2.exe"
+OUTPUT = RELEASE / "桌面外设电量_安装程序_v1.6.3.exe"
 USAGE = ROOT / "使用说明.txt"
 
 

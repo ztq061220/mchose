@@ -10,6 +10,11 @@ try:
     import ble_battery
 except Exception:  # BLE support is optional on non-Windows / minimal installs
     ble_battery = None
+
+try:
+    import hub_live
+except Exception:  # live HUB UI is optional; cache-only still works
+    hub_live = None
 from dataclasses import dataclass, asdict
 from datetime import datetime
 from pathlib import Path
@@ -347,6 +352,50 @@ def get_status() -> dict[str, Any]:
     descriptors = parse_descriptors(files) if files else []
     devices = collect_mchose_devices(records, descriptors)
 
+    # The LevelDB cache may contain ``batteryLevel: "breakConnect"`` for a
+    # device that MCHOSE HUB is currently displaying with a live percentage.
+    # Read the live device cards over HUB's local Electron DevTools endpoint
+    # and let those values override/complete the cache.
+    live_devices: list[dict[str, Any]] = []
+    if hub_live is not None:
+        try:
+            live_devices = hub_live.get_devices()
+        except Exception:
+            live_devices = []
+    if live_devices:
+        by_name = {d.name.lower(): d for d in devices}
+        for live in live_devices:
+            key = str(live.get("key") or "").strip()
+            name = str(live.get("name") or "").strip()
+            battery = live.get("battery")
+            if not isinstance(battery, (int, float)):
+                continue
+            target = by_name.get(key.lower())
+            if target is None and name:
+                target = next(
+                    (d for d in devices if name.lower() in d.name.lower() or d.name.lower() in key.lower()),
+                    None,
+                )
+            if target is not None:
+                target.battery = int(battery)
+                target.charging = bool(live.get("charging"))
+                target.connected = True
+                target.status = "充电中" if target.charging else "已连接"
+                target.note = "MCHOSE HUB 实时界面"
+            else:
+                kind = infer_type(name, key)
+                target = Device(
+                    kind,
+                    name or key,
+                    int(battery),
+                    bool(live.get("charging")),
+                    True,
+                    "充电中" if live.get("charging") else "已连接",
+                    "MCHOSE HUB 实时界面",
+                )
+                devices.append(target)
+            by_name[target.name.lower()] = target
+
     ble_devices: list[dict[str, Any]] = []
     if ble_battery is not None:
         try:
@@ -383,6 +432,8 @@ def get_status() -> dict[str, Any]:
         source = "MCHOSE HUB + Bluetooth LE"
     elif ble_devices:
         source = "Bluetooth LE"
+    if live_devices:
+        source += " + 实时界面"
     error = None
     if not files and not ble_devices:
         error = "未找到 MCHOSE HUB 本地缓存，也未发现标准 BLE 电池设备"
@@ -403,6 +454,7 @@ def get_status() -> dict[str, Any]:
             "records": len(records),
             "descriptors": len(descriptors),
             "ble": len(ble_devices),
+            "hubLive": len(live_devices),
         },
     }
 

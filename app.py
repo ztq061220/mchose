@@ -884,7 +884,7 @@ class SettingsPopup(QWidget):
             actions.addWidget(button)
         layout.addLayout(actions)
 
-        footer = QLabel("桌面外设电量  ·  v1.6.2")
+        footer = QLabel("桌面外设电量  ·  v1.6.3")
         footer.setAlignment(Qt.AlignCenter)
         footer.setFont(font(4.0, QFont.Normal, 1.0, 6))
         footer.setStyleSheet("color:#B4B8C7;")
