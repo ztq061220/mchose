@@ -3,6 +3,8 @@ from __future__ import annotations
 
 import os
 import re
+import subprocess
+import time
 
 try:
     import ble_battery
@@ -49,6 +51,54 @@ class Descriptor:
     product_name: str
     battery: int | None
     connect_mode: int | None
+
+
+_USB_CACHE: dict[tuple[int, int], tuple[float, bool]] = {}
+_USB_CACHE_TTL = 20.0
+
+
+def _usb_ids(key: str) -> tuple[int, int] | None:
+    """Extract the decimal VID/PID encoded in a HUB product key."""
+    match = re.search(r"\$\$\$(\d+)\$\$\$(\d+)", str(key or ""))
+    if not match:
+        return None
+    return int(match.group(1)), int(match.group(2))
+
+
+def _usb_present(vid: int, pid: int) -> bool:
+    """Check whether the USB receiver/device is currently present in Windows.
+
+    Some 2.4G keyboards (for example the K87 V3 2.4G) have a HUB descriptor
+    but no ``connectStatus`` record until HUB refreshes its battery cache.
+    Their USB receiver is still visible to Windows, so use that as a safe
+    fallback instead of showing every stale keyboard descriptor forever.
+    """
+    now = time.monotonic()
+    cached = _USB_CACHE.get((vid, pid))
+    if cached and now - cached[0] < _USB_CACHE_TTL:
+        return cached[1]
+    present = False
+    if os.name == "nt":
+        query = (
+            "@(Get-PnpDevice -PresentOnly -ErrorAction SilentlyContinue | "
+            f"Where-Object {{ $_.InstanceId -match 'VID_{vid:04X}&PID_{pid:04X}' }}).Count"
+        )
+        try:
+            creationflags = getattr(subprocess, "CREATE_NO_WINDOW", 0)
+            result = subprocess.run(
+                ["powershell", "-NoProfile", "-NonInteractive", "-Command", query],
+                capture_output=True,
+                text=True,
+                encoding="utf-8",
+                errors="ignore",
+                timeout=4,
+                creationflags=creationflags,
+            )
+            present = result.stdout.strip() not in ("", "0")
+        except (OSError, subprocess.SubprocessError):
+            present = False
+    _USB_CACHE[(vid, pid)] = (now, present)
+    return present
 
 
 def product_name(value: str | None) -> str:
@@ -243,14 +293,18 @@ def collect_mchose_devices(records: dict[str, dict[str, Any]], descriptors: list
         battery_value = record.get("battery") if record else None
         if battery_value is None and kind not in ("keyboard", "mouse"):
             continue
+        # A 2.4G keyboard may be present in Windows while HUB has only a
+        # descriptor and no connectStatus/battery record yet.  Show it as
+        # connected but without a percentage, rather than hiding it.
+        if descriptor is not None and battery_value is None and kind == "keyboard":
+            ids = _usb_ids(descriptor.key)
+            if ids and _usb_present(*ids):
+                record = dict(record or descriptor_record(descriptor) or {})
+                record["connectStatus"] = 2
+                record["_status"] = "已连接 · 未读取电量"
+                record["_note"] = "MCHOSE HUB 暂未上报这把键盘的电量；2.4G 接收器已连接。"
         devices.append(build_device(kind, display_name, record))
 
-    # A keyboard can expose both G87 and K87 aliases for the same hardware.
-    # If one alias has a battery reading, hide the empty alias of the same type.
-    for kind in ("keyboard", "mouse"):
-        typed = [d for d in devices if d.type == kind]
-        if any(d.battery is not None for d in typed):
-            devices = [d for d in devices if d.type != kind or d.battery is not None]
     return devices
 
 
@@ -279,9 +333,10 @@ def build_device(kind: str, key: str | None, record: dict[str, Any] | None) -> D
             status = "已连接"
     elif key:
         status = "不显示电量" if kind == "keyboard" else "未检测到电量"
-    note = ""
-    if kind == "keyboard" and battery is None:
+    note = (record or {}).get("_note", "")
+    if not note and kind == "keyboard" and battery is None:
         note = "有线键盘没有电池，不显示电量属正常；无线键盘请确认 MCHOSE HUB 已读取。"
+    status = (record or {}).get("_status") or status
     return Device(kind, name, battery, charging, connected, status, note)
 
 

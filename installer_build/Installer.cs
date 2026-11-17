@@ -13,8 +13,8 @@ using Microsoft.Win32;
 [assembly: AssemblyDescription("桌面外设电量安装程序")]
 [assembly: AssemblyProduct("桌面外设电量")]
 [assembly: AssemblyCompany("Desktop Battery Widget")]
-[assembly: AssemblyVersion("1.6.1.0")]
-[assembly: AssemblyFileVersion("1.6.1.0")]
+[assembly: AssemblyVersion("1.6.2.0")]
+[assembly: AssemblyFileVersion("1.6.2.0")]
 
 namespace MchoseSetup
 {
@@ -276,7 +276,7 @@ namespace MchoseSetup
             head.Controls.Add(title);
 
             Label sub = new Label();
-            sub.Text = "v1.6.1  ·  桌面外设电量挂件";
+            sub.Text = "v1.6.2  ·  桌面外设电量挂件";
             sub.ForeColor = Color.FromArgb(210, 218, 240);
             sub.Font = new Font("Microsoft YaHei UI", 9F);
             sub.AutoSize = true;
