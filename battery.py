@@ -261,7 +261,10 @@ def build_device(kind: str, key: str | None, record: dict[str, Any] | None) -> D
     charging = bool(record and record.get("chargeStatus") == 1)
     connected = None
     if record and record.get("connectStatus") is not None:
-        connected = record.get("connectStatus") != 0
+        # MCHOSE HUB uses 2 for the currently active connection and 1 for a
+        # cached/passive record.  Treat only 2 as connected so stale entries
+        # for powered-off devices are not shown.
+        connected = record.get("connectStatus") == 2
     status = "未检测到设备"
     if record:
         if battery is None:
@@ -309,6 +312,11 @@ def get_status() -> dict[str, Any]:
             ))
             existing.add(str(device.get("name", "")).lower())
 
+    # Hide stale cache entries: only show devices that the HUB or Windows
+    # currently reports as connected.
+    detected_count = len(devices)
+    devices = [device for device in devices if device.connected is True]
+
     devices.sort(key=lambda d: (
         {"keyboard": 0, "mouse": 1, "headset": 2, "gamepad": 3}.get(d.type, 4),
         -(d.battery if d.battery is not None else -1),
@@ -323,6 +331,8 @@ def get_status() -> dict[str, Any]:
     error = None
     if not files and not ble_devices:
         error = "未找到 MCHOSE HUB 本地缓存，也未发现标准 BLE 电池设备"
+    elif not devices and detected_count:
+        error = "已发现设备，但当前都没有连接；连接后会显示电量"
     elif not devices:
         error = "未发现支持电量读取的外设；请启动 MCHOSE HUB 或连接支持标准 BLE 电池服务的设备"
 

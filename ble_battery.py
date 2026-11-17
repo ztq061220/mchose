@@ -45,13 +45,15 @@ def _address_from_id(device_id: str) -> str:
 
 
 async def _read_battery(device_id: str, name: str) -> int | None:
-    from winrt.windows.devices.bluetooth import BluetoothLEDevice
+    from winrt.windows.devices.bluetooth import BluetoothConnectionStatus, BluetoothLEDevice
     from winrt.windows.storage.streams import DataReader
 
     device = await BluetoothLEDevice.from_id_async(device_id)
     if device is None:
         return None
     try:
+        if device.connection_status != BluetoothConnectionStatus.CONNECTED:
+            return None
         services = await device.get_gatt_services_async()
         for service in services.services:
             if str(service.uuid).lower() != BATTERY_SERVICE:

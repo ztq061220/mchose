@@ -8,7 +8,8 @@
 
 - 桌面透明头像常驻，头像右下角显示首个鼠标/有电量外设的百分比
 - 左键单击头像展开 / 收起云朵电量气泡；悬停不展开
-- 自动列出 HUB 内全部带电量设备 + 标准 BLE Battery Service 设备
+- 自动列出 HUB 内全部**当前已连接**且带电量设备（不限 MCHOSE 型号）+ 标准 BLE Battery Service 设备
+- 未连接/已断开的设备不会显示
 - 右键头像打开圆角设置卡片：大小 50%–300%、开机启动、隐藏、刷新、退出
 - 按住头像拖动到桌面任意位置，位置自动保存
 - 拖到屏幕边缘（14px 内）松手，自动收进屏幕，只留一个边缘标签；点击标签滑出
@@ -52,7 +53,7 @@ python installer_build/build_installer.py
 
 1. 把 `dist/MCHOSEBatteryWidget/` 压缩成 `installer_build/payload.zip`
 2. 用 .NET Framework 的 `csc.exe` 编译 `installer_build/Installer.cs`
-3. 输出 `release/桌面外设电量_安装程序_v1.6.0.exe`
+3. 输出 `release/桌面外设电量_安装程序_v1.6.1.exe`
 
 安装器支持自选安装位置，默认安装到：
 
