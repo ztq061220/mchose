@@ -1,18 +1,20 @@
-# MCHOSE 键鼠电量
+# 桌面外设电量
 
-一个 Windows 桌面小挂件：显示 MCHOSE 键盘 / 鼠标电量，并提供虚拟形象、云朵电量气泡和托盘驻留。
+一个 Windows 桌面小挂件：显示 MCHOSE HUB 与标准 BLE 外设的电量，并提供虚拟形象、云朵电量气泡和托盘驻留。
 
 ![screenshot](docs/screenshot.png)
 
 ## 功能
 
-- 桌面透明头像常驻，头像右下角显示鼠标电量
+- 桌面透明头像常驻，头像右下角显示首个鼠标/有电量外设的百分比
 - 左键单击头像展开 / 收起云朵电量气泡；悬停不展开
+- 自动列出 HUB 内全部带电量设备 + 标准 BLE Battery Service 设备
 - 右键头像打开圆角设置卡片：大小 50%–300%、开机启动、隐藏、刷新、退出
 - 按住头像拖动到桌面任意位置，位置自动保存
 - 拖到屏幕边缘（14px 内）松手，自动收进屏幕，只留一个边缘标签；点击标签滑出
 - 托盘菜单：显示 / 隐藏、立即刷新、设置、开机启动、退出
 - 有线键盘没有电池时显示“不显示电量”，不当作故障
+- 支持范围有限：厂商私有协议（罗技 G HUB、雷蛇 Synapse 等）暂不支持，不能宣称所有外设通用
 
 ## 依赖
 
@@ -50,7 +52,7 @@ python installer_build/build_installer.py
 
 1. 把 `dist/MCHOSEBatteryWidget/` 压缩成 `installer_build/payload.zip`
 2. 用 .NET Framework 的 `csc.exe` 编译 `installer_build/Installer.cs`
-3. 输出 `release/MCHOSE键鼠电量_安装程序_v1.5.7.exe`
+3. 输出 `release/桌面外设电量_安装程序_v1.6.0.exe`
 
 安装器支持自选安装位置，默认安装到：
 
@@ -60,13 +62,13 @@ python installer_build/build_installer.py
 
 ## 数据来源
 
-电量读取自 MCHOSE HUB 的本地缓存：
+电量读取自 MCHOSE HUB 的本地缓存，以及标准 BLE GATT Battery Service：
 
 ```text
 %APPDATA%\MCHOSEHUB\Local Storage\leveldb
 ```
 
-因此需要 MCHOSE HUB 正在运行，并且键鼠已经连接、上报过电量。
+MCHOSE 设备需要 HUB 正在运行并已上报电量；标准 BLE 设备需要系统已配对并暴露 Battery Service。
 
 ## 卸载
 

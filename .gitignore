@@ -30,3 +30,7 @@ Thumbs.db
 
 # Local installer tests
 install_test*/
+
+# Generated previews
+preview_*.png
+install_test*/

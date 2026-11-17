@@ -1,9 +1,10 @@
-"""MCHOSE Battery Widget - standalone desktop widget."""
+"""桌面外设电量 - standalone Windows widget."""
 from __future__ import annotations
 
 import json
 import os
 import sys
+import time
 import traceback
 from datetime import datetime
 from pathlib import Path
@@ -23,7 +24,7 @@ from PyQt5.QtNetwork import QLocalServer, QLocalSocket
 
 import battery
 
-APP_NAME = "MCHOSE 键鼠电量"
+APP_NAME = "桌面外设电量"
 APP_DIR = Path(os.environ.get("APPDATA", str(Path.home()))) / "MCHOSEBatteryWidget"
 CONFIG_FILE = APP_DIR / "config.json"
 LOG_FILE = APP_DIR / "error.log"
@@ -209,11 +210,11 @@ class DeviceRow(QWidget):
     def __init__(self, kind: str, parent=None):
         super().__init__(parent)
         self.kind = kind
-        self.icon = QLabel("键" if kind == "keyboard" else "鼠")
+        self.icon = QLabel({"keyboard": "键", "mouse": "鼠", "headset": "耳机", "gamepad": "手柄"}.get(kind, "设"))
         self.icon.setAlignment(Qt.AlignCenter)
         self.name = QLabel("读取中…")
         self.name.setTextFormat(Qt.PlainText)
-        self.status = QLabel("正在读取 MCHOSE HUB 缓存")
+        self.status = QLabel("正在读取设备电量")
         self.status.setTextFormat(Qt.PlainText)
         self.percent = QLabel("--")
         self.percent.setAlignment(Qt.AlignRight | Qt.AlignVCenter)
@@ -257,7 +258,7 @@ class DeviceRow(QWidget):
         self.grid.setVerticalSpacing(1)
 
     def update_device(self, device: dict) -> None:
-        name = str(device.get("name") or ("键盘" if self.kind == "keyboard" else "鼠标"))
+        name = str(device.get("name") or battery.TYPE_LABELS.get(self.kind, "外设"))
         battery_value = device.get("battery")
         charging = bool(device.get("charging"))
         status = str(device.get("status") or "")
@@ -289,7 +290,7 @@ class BatteryPanel(QWidget):
         self._trail = 20
         self._body_width = PANEL_BODY_WIDTH
 
-        self.title = QLabel("键鼠电量")
+        self.title = QLabel("外设电量")
         self.title.setStyleSheet("color:#26356F;")
         self.header_status = QLabel("● 读取中")
         self.header_status.setStyleSheet("color:#8A8EA3; background:#F1F3F8; border-radius:6px; padding:1px 5px;")
@@ -299,8 +300,10 @@ class BatteryPanel(QWidget):
         header.addStretch(1)
         header.addWidget(self.header_status)
 
-        self.keyboard = DeviceRow("keyboard")
-        self.mouse = DeviceRow("mouse")
+        self.rows: list[DeviceRow] = []
+        self.rows_layout = QVBoxLayout()
+        self.rows_layout.setContentsMargins(0, 0, 0, 0)
+        self.rows_layout.setSpacing(4)
         self.updated = QLabel("等待首次刷新")
         self.updated.setStyleSheet("color:#A0A4B8;")
         self.source = QLabel("MCHOSE HUB")
@@ -317,8 +320,7 @@ class BatteryPanel(QWidget):
         self.updated.hide()
         self.source.hide()
         self.layout.addLayout(header)
-        self.layout.addWidget(self.keyboard)
-        self.layout.addWidget(self.mouse)
+        self.layout.addLayout(self.rows_layout)
         self.apply_scale(1.0)
 
     def apply_scale(self, scale: float) -> None:
@@ -329,8 +331,8 @@ class BatteryPanel(QWidget):
         self.header_status.setFixedHeight(max(14, min(18, int(round(18 * scale)))))
         self.updated.setFont(font(8, QFont.Normal, scale, 8))
         self.source.setFont(font(8, QFont.Normal, scale, 8))
-        self.keyboard.apply_scale(scale)
-        self.mouse.apply_scale(scale)
+        for row in self.rows:
+            row.apply_scale(scale)
         self._tail = max(4, int(round(BUBBLE_TAIL * scale)))
         self._trail = max(20, int(round(34 * scale)))
         self._cloud_pad = max(12, int(round(16 * scale)))
@@ -369,7 +371,9 @@ class BatteryPanel(QWidget):
             width += self._tail
         self.setFixedWidth(width)
         self.layout.activate()
-        self.setFixedHeight(max(1, self.layout.sizeHint().height()))
+        # Leave a little extra room below the last row; the cloud border and
+        # shadow need visual breathing room at larger row counts.
+        self.setFixedHeight(max(1, self.layout.sizeHint().height() + max(6, int(round(10 * s)))))
 
     def _bubble_path(self) -> tuple[QPainterPath, QRectF]:
         """Wide smooth speech bubble matching the reference image."""
@@ -444,14 +448,34 @@ class BatteryPanel(QWidget):
             painter.drawPath(circle)
 
     def update_status(self, data: dict) -> None:
-        devices = {str(d.get("type")): d for d in data.get("devices", []) if isinstance(d, dict)}
-        self.keyboard.update_device(devices.get("keyboard", {}))
-        self.mouse.update_device(devices.get("mouse", {}))
+        raw_devices = [d for d in data.get("devices", []) if isinstance(d, dict)]
+        empty = not raw_devices
+        devices = raw_devices or [{
+            "type": "empty",
+            "name": "未发现支持电量读取的外设",
+            "status": "请启动 MCHOSE HUB，或连接支持标准 BLE 电池服务的无线设备",
+            "battery": None,
+            "connected": None,
+        }]
+        while len(self.rows) < len(devices):
+            row = DeviceRow("generic")
+            row.apply_scale(self._scale)
+            self.rows_layout.addWidget(row)
+            self.rows.append(row)
+        while len(self.rows) > len(devices):
+            row = self.rows.pop()
+            self.rows_layout.removeWidget(row)
+            row.deleteLater()
+        for row, device in zip(self.rows, devices):
+            row.update_device(device)
 
-        connected = any(bool(d.get("connected")) for d in devices.values())
+        connected = any(bool(d.get("connected")) for d in devices)
         if data.get("ok") and connected:
             self.header_status.setText("● 已连接")
             self.header_status.setStyleSheet("color:#FFFFFF; background:#2FB36D; border-radius:6px; padding:1px 6px;")
+        elif empty:
+            self.header_status.setText("● 未发现")
+            self.header_status.setStyleSheet("color:#FFFFFF; background:#8A8EA3; border-radius:6px; padding:1px 6px;")
         elif data.get("ok"):
             self.header_status.setText("● 未连接")
             self.header_status.setStyleSheet("color:#FFFFFF; background:#E0A23B; border-radius:6px; padding:1px 6px;")
@@ -467,6 +491,7 @@ class BatteryPanel(QWidget):
         meta = data.get("meta") or {}
         files = meta.get("files")
         self.source.setText(f"MCHOSE HUB · {files} 文件" if files else "MCHOSE HUB")
+        self._update_geometry()
 
 
 class AvatarWidget(QWidget):
@@ -477,12 +502,12 @@ class AvatarWidget(QWidget):
         self.setAttribute(Qt.WA_TranslucentBackground, True)
         self.setAttribute(Qt.WA_NoSystemBackground, True)
         self._pixmap = QPixmap(str(resource_path("assets/avatar.png")))
-        self._mouse_battery = None
-        self._mouse_charging = False
+        self._primary_battery = None
+        self._primary_charging = False
         self._scale = 1.0
         self._squash = 1.0
         self._squash_anim = None
-        self.setToolTip("MCHOSE 键鼠电量")
+        self.setToolTip("桌面外设电量")
         self.apply_scale(1.0)
 
     def get_squash(self) -> float:
@@ -519,9 +544,9 @@ class AvatarWidget(QWidget):
         self.setFixedSize(size, size)
         self.update()
 
-    def set_mouse(self, device: dict | None) -> None:
-        self._mouse_battery = (device or {}).get("battery")
-        self._mouse_charging = bool((device or {}).get("charging"))
+    def set_primary(self, device: dict | None) -> None:
+        self._primary_battery = (device or {}).get("battery")
+        self._primary_charging = bool((device or {}).get("charging"))
         self.update()
 
     def paintEvent(self, event) -> None:
@@ -540,8 +565,8 @@ class AvatarWidget(QWidget):
                 y = (self.height() - scaled.height()) // 2
                 painter.drawPixmap(x, y, scaled)
 
-        if self._mouse_battery is not None:
-            text = f"{int(self._mouse_battery)}%"
+        if self._primary_battery is not None:
+            text = f"{int(self._primary_battery)}%"
             badge_font = font(7, QFont.Bold, self._scale)
             painter.setFont(badge_font)
             metrics = painter.fontMetrics()
@@ -555,7 +580,7 @@ class AvatarWidget(QWidget):
                 height,
             )
             painter.setPen(Qt.NoPen)
-            painter.setBrush(battery_color(self._mouse_battery, self._mouse_charging))
+            painter.setBrush(battery_color(self._primary_battery, self._primary_charging))
             painter.drawRoundedRect(badge, height / 2, height / 2)
             painter.setPen(QColor("white"))
             painter.drawText(badge, Qt.AlignCenter, text)
@@ -742,7 +767,7 @@ class SettingsPopup(QWidget):
         title = QLabel("挂件设置")
         title.setFont(font(6.0, QFont.Bold, 1.0, 7))
         title.setStyleSheet("color:#202437;")
-        subtitle = QLabel("MCHOSE 键鼠电量")
+        subtitle = QLabel("桌面外设电量")
         subtitle.setFont(font(4.0, QFont.Normal, 1.0, 6))
         subtitle.setStyleSheet("color:#9297AA;")
         title_col.addWidget(title)
@@ -859,7 +884,7 @@ class SettingsPopup(QWidget):
             actions.addWidget(button)
         layout.addLayout(actions)
 
-        footer = QLabel("MCHOSE Battery Widget  ·  v1.5.7")
+        footer = QLabel("桌面外设电量  ·  v1.6.0")
         footer.setAlignment(Qt.AlignCenter)
         footer.setFont(font(4.0, QFont.Normal, 1.0, 6))
         footer.setStyleSheet("color:#B4B8C7;")
@@ -942,6 +967,8 @@ class BatteryWidget(QWidget):
         self._settings_menu = None
         self._settings_popup = None
         self._status = {}
+        self._last_devices: list[dict] = []
+        self._last_device_at = 0.0
         self._drag_origin = None
         self._drag_start = None
         self._moved = False
@@ -1372,16 +1399,44 @@ class BatteryWidget(QWidget):
             thread.deleteLater()
 
     def apply_status(self, data: dict) -> None:
+        devices = [d for d in data.get("devices", []) if isinstance(d, dict)]
+        now = time.monotonic()
+        # HUB's leveldb can briefly drop records between refreshes.  Keep a
+        # short-lived merge so the panel does not flicker between 2 and 4 rows.
+        if devices and len(devices) < len(self._last_devices) and now - self._last_device_at < 15.0:
+            known = {str(d.get("name") or "") for d in devices}
+            devices = devices + [
+                d for d in self._last_devices
+                if str(d.get("name") or "") not in known and d.get("type") != "empty"
+            ]
+        if not devices or len(devices) >= len(self._last_devices) or now - self._last_device_at > 15.0:
+            self._last_devices = [d for d in devices if d.get("type") != "empty"]
+            self._last_device_at = now
+        if devices:
+            data = dict(data)
+            data["devices"] = devices
         self._status = data
         self.panel.update_status(data)
-        devices = {str(d.get("type")): d for d in data.get("devices", []) if isinstance(d, dict)}
-        keyboard = devices.get("keyboard", {})
-        mouse = devices.get("mouse", {})
-        self.avatar.set_mouse(mouse)
+        if not self._collapsed:
+            self._recalc_size()
+            self._apply_layout()
+            self._flip_panel_if_needed()
+            self._ensure_expanded_visible()
+        primary = next(
+            (d for d in devices if d.get("type") == "mouse" and d.get("battery") is not None),
+            None,
+        ) or next((d for d in devices if d.get("battery") is not None), None)
+        self.avatar.set_primary(primary)
         if self.tray is not None:
-            key_text = f"{keyboard.get('battery')}%" if keyboard.get("battery") is not None else "--"
-            mouse_text = f"{mouse.get('battery')}%" if mouse.get("battery") is not None else "--"
-            self.tray.setToolTip(f"{APP_NAME}\n键盘 {key_text} · 鼠标 {mouse_text}")
+            lines = [APP_NAME]
+            for device in devices[:6]:
+                name = str(device.get("name") or "外设")
+                value = device.get("battery")
+                text = f"{int(value)}%" if value is not None else "--"
+                lines.append(f"{name}: {text}")
+            if len(devices) > 6:
+                lines.append(f"… 另有 {len(devices) - 6} 个设备")
+            self.tray.setToolTip(chr(10).join(lines))
 
     def toggle_visibility(self) -> None:
         if self.isVisible():

@@ -9,12 +9,12 @@ using System.Threading;
 using System.Windows.Forms;
 using Microsoft.Win32;
 
-[assembly: AssemblyTitle("MCHOSE 键鼠电量 安装程序")]
-[assembly: AssemblyDescription("MCHOSE 键鼠电量桌面挂件安装程序")]
-[assembly: AssemblyProduct("MCHOSE 键鼠电量")]
-[assembly: AssemblyCompany("MCHOSE Battery Widget")]
-[assembly: AssemblyVersion("1.5.7.0")]
-[assembly: AssemblyFileVersion("1.5.7.0")]
+[assembly: AssemblyTitle("桌面外设电量 安装程序")]
+[assembly: AssemblyDescription("桌面外设电量安装程序")]
+[assembly: AssemblyProduct("桌面外设电量")]
+[assembly: AssemblyCompany("Desktop Battery Widget")]
+[assembly: AssemblyVersion("1.6.0.0")]
+[assembly: AssemblyFileVersion("1.6.0.0")]
 
 namespace MchoseSetup
 {
@@ -131,7 +131,7 @@ namespace MchoseSetup
                     Report(report, 76, "正在创建快捷方式...");
                     try
                     {
-                        CreateShortcut(Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.DesktopDirectory), "MCHOSE 键鼠电量.lnk"));
+                        CreateShortcut(Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.DesktopDirectory), "桌面外设电量.lnk"));
                     }
                     catch (Exception ex)
                     {
@@ -139,7 +139,7 @@ namespace MchoseSetup
                     }
                     try
                     {
-                        CreateShortcut(Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.Programs), "MCHOSE 键鼠电量.lnk"));
+                        CreateShortcut(Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.Programs), "桌面外设电量.lnk"));
                     }
                     catch (Exception ex)
                     {
@@ -228,7 +228,7 @@ namespace MchoseSetup
             sc.Arguments = "\"" + VbsPath + "\"";
             sc.WorkingDirectory = TargetDir;
             sc.IconLocation = ExePath + ",0";
-            sc.Description = "MCHOSE 键鼠电量";
+            sc.Description = "桌面外设电量";
             sc.Save();
         }
 
@@ -254,7 +254,7 @@ namespace MchoseSetup
 
         public SetupForm()
         {
-            Text = "MCHOSE 键鼠电量 安装程序";
+            Text = "桌面外设电量 安装程序";
             ClientSize = new Size(520, 340);
             StartPosition = FormStartPosition.CenterScreen;
             FormBorderStyle = FormBorderStyle.FixedSingle;
@@ -268,7 +268,7 @@ namespace MchoseSetup
             head.BackColor = Color.FromArgb(38, 53, 111);
         
             Label title = new Label();
-            title.Text = "MCHOSE 键鼠电量";
+            title.Text = "桌面外设电量";
             title.ForeColor = Color.White;
             title.Font = new Font("Microsoft YaHei UI", 20F, FontStyle.Bold);
             title.AutoSize = true;
@@ -276,7 +276,7 @@ namespace MchoseSetup
             head.Controls.Add(title);
 
             Label sub = new Label();
-            sub.Text = "v1.5.7  ·  桌面键鼠电量挂件";
+            sub.Text = "v1.6.0  ·  桌面外设电量挂件";
             sub.ForeColor = Color.FromArgb(210, 218, 240);
             sub.Font = new Font("Microsoft YaHei UI", 9F);
             sub.AutoSize = true;
@@ -351,7 +351,7 @@ namespace MchoseSetup
         {
             using (FolderBrowserDialog dlg = new FolderBrowserDialog())
             {
-                dlg.Description = "选择 MCHOSE 键鼠电量的安装文件夹";
+                dlg.Description = "选择 桌面外设电量的安装文件夹";
                 dlg.ShowNewFolderButton = true;
                 if (Directory.Exists(pathBox.Text)) dlg.SelectedPath = pathBox.Text;
                 if (dlg.ShowDialog(this) == DialogResult.OK) pathBox.Text = dlg.SelectedPath;

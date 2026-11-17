@@ -3,6 +3,11 @@ from __future__ import annotations
 
 import os
 import re
+
+try:
+    import ble_battery
+except Exception:  # BLE support is optional on non-Windows / minimal installs
+    ble_battery = None
 from dataclasses import dataclass, asdict
 from datetime import datetime
 from pathlib import Path
@@ -193,8 +198,64 @@ def find_record(records: dict[str, dict[str, Any]], key: str | None) -> dict[str
     return None
 
 
+TYPE_LABELS = {
+    "keyboard": "键盘",
+    "mouse": "鼠标",
+    "headset": "耳机",
+    "gamepad": "手柄",
+    "generic": "外设",
+}
+
+
+def infer_type(*names: str) -> str:
+    text = " ".join(str(n or "") for n in names).lower()
+    if any(token in text for token in ("keyboard", "kbd", "g87", "g98", "k87", "k20", "ace")):
+        return "keyboard"
+    if any(token in text for token in ("mouse", " k7", "v7", "v9", "r9")):
+        return "mouse"
+    if any(token in text for token in ("headphone", "headset", "buds", "edifier", "耳机")):
+        return "headset"
+    if any(token in text for token in ("gamepad", "controller", "手柄")):
+        return "gamepad"
+    return "generic"
+
+
+def collect_mchose_devices(records: dict[str, dict[str, Any]], descriptors: list[Descriptor]) -> list[Device]:
+    """Return every unique HUB device, not just the current keyboard/mouse."""
+    items: dict[str, tuple[str, str, Descriptor | None, dict[str, Any] | None]] = {}
+    for descriptor in descriptors:
+        name = product_name(descriptor.key)
+        if not name:
+            continue
+        normalized = name.lower()
+        if normalized in items:
+            continue
+        items[normalized] = (infer_type(descriptor.device_name, descriptor.product_name, name), name, descriptor, None)
+    for name, record in records.items():
+        normalized = name.lower()
+        if normalized in items:
+            continue
+        items[normalized] = (infer_type(name), name, None, record)
+
+    devices: list[Device] = []
+    for normalized, (kind, display_name, descriptor, record_hint) in items.items():
+        record = find_record(records, normalized) or record_hint or descriptor_record(descriptor)
+        battery_value = record.get("battery") if record else None
+        if battery_value is None and kind not in ("keyboard", "mouse"):
+            continue
+        devices.append(build_device(kind, display_name, record))
+
+    # A keyboard can expose both G87 and K87 aliases for the same hardware.
+    # If one alias has a battery reading, hide the empty alias of the same type.
+    for kind in ("keyboard", "mouse"):
+        typed = [d for d in devices if d.type == kind]
+        if any(d.battery is not None for d in typed):
+            devices = [d for d in devices if d.type != kind or d.battery is not None]
+    return devices
+
+
 def build_device(kind: str, key: str | None, record: dict[str, Any] | None) -> Device:
-    fallback = "键盘" if kind == "keyboard" else "鼠标"
+    fallback = TYPE_LABELS.get(kind, "外设")
     name = product_name(key) or (record or {}).get("name") or fallback
     battery = record.get("battery") if record and isinstance(record.get("battery"), (int, float)) else None
     charging = bool(record and record.get("chargeStatus") == 1)
@@ -223,34 +284,60 @@ def build_device(kind: str, key: str | None, record: dict[str, Any] | None) -> D
 
 def get_status() -> dict[str, Any]:
     files = list_storage_files()
-    if not files:
-        return {
-            "ok": False,
-            "updatedAt": datetime.now().astimezone().isoformat(timespec="seconds"),
-            "source": str(STORAGE_DIR),
-            "error": "未找到 MCHOSE HUB 本地缓存，请先启动 MCHOSE HUB",
-            "devices": [build_device("keyboard", None, None).as_dict(), build_device("mouse", None, None).as_dict()],
-            "meta": {"files": 0, "latestFile": None, "records": 0, "descriptors": 0},
-        }
-    latin1, utf16 = read_texts(files)
-    records = parse_battery_records(latin1, utf16)
-    descriptors = parse_descriptors(files)
-    keyboard_descriptor = find_keyboard_descriptor(descriptors)
-    mouse_descriptor = find_mouse_descriptor(descriptors)
-    keyboard_key = keyboard_descriptor.key if keyboard_descriptor else None
-    mouse_key = mouse_descriptor.key if mouse_descriptor else None
-    keyboard_record = find_record(records, keyboard_key) or descriptor_record(keyboard_descriptor)
-    mouse_record = find_record(records, mouse_key) or descriptor_record(mouse_descriptor)
+    latin1, utf16 = read_texts(files) if files else ("", "")
+    records = parse_battery_records(latin1, utf16) if files else {}
+    descriptors = parse_descriptors(files) if files else []
+    devices = collect_mchose_devices(records, descriptors)
+
+    ble_devices: list[dict[str, Any]] = []
+    if ble_battery is not None:
+        try:
+            ble_devices = ble_battery.get_ble_devices()
+        except Exception:
+            ble_devices = []
+    existing = {d.name.lower() for d in devices}
+    for device in ble_devices:
+        if str(device.get("name", "")).lower() not in existing:
+            devices.append(Device(
+                str(device.get("type") or "generic"),
+                str(device.get("name") or "蓝牙外设"),
+                device.get("battery"),
+                bool(device.get("charging")),
+                device.get("connected"),
+                str(device.get("status") or "蓝牙 BLE"),
+                str(device.get("note") or ""),
+            ))
+            existing.add(str(device.get("name", "")).lower())
+
+    devices.sort(key=lambda d: (
+        {"keyboard": 0, "mouse": 1, "headset": 2, "gamepad": 3}.get(d.type, 4),
+        -(d.battery if d.battery is not None else -1),
+        d.name.lower(),
+    ))
+
+    source = str(STORAGE_DIR) if files else "Bluetooth LE"
+    if files and ble_devices:
+        source = "MCHOSE HUB + Bluetooth LE"
+    elif ble_devices:
+        source = "Bluetooth LE"
+    error = None
+    if not files and not ble_devices:
+        error = "未找到 MCHOSE HUB 本地缓存，也未发现标准 BLE 电池设备"
+    elif not devices:
+        error = "未发现支持电量读取的外设；请启动 MCHOSE HUB 或连接支持标准 BLE 电池服务的设备"
+
     return {
-        "ok": True,
+        "ok": bool(devices),
         "updatedAt": datetime.now().astimezone().isoformat(timespec="seconds"),
-        "source": str(STORAGE_DIR),
-        "devices": [build_device("keyboard", keyboard_key, keyboard_record).as_dict(), build_device("mouse", mouse_key, mouse_record).as_dict()],
+        "source": source,
+        "error": error,
+        "devices": [device.as_dict() for device in devices],
         "meta": {
             "files": len(files),
-            "latestFile": files[-1].name,
+            "latestFile": files[-1].name if files else None,
             "records": len(records),
             "descriptors": len(descriptors),
+            "ble": len(ble_devices),
         },
     }
 

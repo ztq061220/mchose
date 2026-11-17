@@ -26,7 +26,7 @@
 - Signing policy：`release-signing`
 - Artifact configuration：
   - `app-exe`：用于 `dist/MCHOSEBatteryWidget/MCHOSEBatteryWidget.exe`
-  - `installer-exe`：用于 `release/MCHOSE键鼠电量_安装程序_v1.5.7.exe`
+  - `installer-exe`：用于 `release/桌面外设电量_安装程序_v1.6.0.exe`
 
 安装 SignPath GitHub App 到本仓库。
 
@@ -63,7 +63,7 @@ SIGNPATH_ORGANIZATION_ID
   id: upload
   with:
     name: unsigned
-    path: release/MCHOSE键鼠电量_安装程序_v1.5.7.exe
+    path: release/桌面外设电量_安装程序_v1.6.0.exe
 
 - uses: signpath/github-action-submit-signing-request@v1
   with:
