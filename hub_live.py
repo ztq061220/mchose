@@ -15,7 +15,7 @@ import urllib.request
 
 _CACHE: list[dict] = []
 _CACHE_AT = 0.0
-_CACHE_TTL = 3.0
+_CACHE_TTL = 1.0
 _ENDPOINT = "http://127.0.0.1:9222/json/list"
 
 _JS = r"""

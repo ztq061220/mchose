@@ -370,10 +370,22 @@ class BatteryPanel(QWidget):
         if self._tail_side in ("left", "right"):
             width += self._tail
         self.setFixedWidth(width)
+        self.layout.invalidate()
         self.layout.activate()
         # Leave a little extra room below the last row; the cloud border and
         # shadow need visual breathing room at larger row counts.
         self.setFixedHeight(max(1, self.layout.sizeHint().height() + max(6, int(round(10 * s)))))
+        self.updateGeometry()
+
+    def showEvent(self, event) -> None:
+        # QWidget layouts of hidden children can be stale.  Re-activate the
+        # row layout at the moment the panel becomes visible so device rows
+        # never paint on top of each other on the first open.
+        super().showEvent(event)
+        self.layout.invalidate()
+        self.layout.activate()
+        self._update_geometry()
+        QTimer.singleShot(0, self._update_geometry)
 
     def _bubble_path(self) -> tuple[QPainterPath, QRectF]:
         """Wide smooth speech bubble matching the reference image."""
@@ -483,6 +495,10 @@ class BatteryPanel(QWidget):
             self.header_status.setText("● 读取失败")
             self.header_status.setStyleSheet("color:#FFFFFF; background:#E05260; border-radius:6px; padding:1px 6px;")
 
+        self.rows_layout.invalidate()
+        self.layout.invalidate()
+        self.layout.activate()
+        self._update_geometry()
         updated = str(data.get("updatedAt") or "")
         if "T" in updated:
             updated = updated.split("T", 1)[1][:8]
@@ -884,7 +900,7 @@ class SettingsPopup(QWidget):
             actions.addWidget(button)
         layout.addLayout(actions)
 
-        footer = QLabel("桌面外设电量  ·  v1.6.3")
+        footer = QLabel("桌面外设电量  ·  v1.6.4")
         footer.setAlignment(Qt.AlignCenter)
         footer.setFont(font(4.0, QFont.Normal, 1.0, 6))
         footer.setStyleSheet("color:#B4B8C7;")
@@ -1209,7 +1225,12 @@ class BatteryWidget(QWidget):
         if self._collapsed:
             return
         if not self.panel.isVisible():
+            self.panel.layout.invalidate()
+            self.panel.layout.activate()
+            self.panel._update_geometry()
             self.panel.show()
+            self.panel.layout.activate()
+            self.panel._update_geometry()
             self.panel.raise_()
             self.cfg["panel_visible"] = True
             self._save_position()
@@ -1400,21 +1421,8 @@ class BatteryWidget(QWidget):
 
     def apply_status(self, data: dict) -> None:
         devices = [d for d in data.get("devices", []) if isinstance(d, dict)]
-        now = time.monotonic()
-        # HUB's leveldb can briefly drop records between refreshes.  Keep a
-        # short-lived merge so the panel does not flicker between 2 and 4 rows.
-        if devices and len(devices) < len(self._last_devices) and now - self._last_device_at < 15.0:
-            known = {str(d.get("name") or "") for d in devices}
-            devices = devices + [
-                d for d in self._last_devices
-                if str(d.get("name") or "") not in known and d.get("type") != "empty"
-            ]
-        if not devices or len(devices) >= len(self._last_devices) or now - self._last_device_at > 15.0:
-            self._last_devices = [d for d in devices if d.get("type") != "empty"]
-            self._last_device_at = now
-        if devices:
-            data = dict(data)
-            data["devices"] = devices
+        # Do not merge old rows back in: a disconnected device must disappear
+        # on the very next refresh.  The source already filters connected state.
         self._status = data
         self.panel.update_status(data)
         if not self._collapsed:
