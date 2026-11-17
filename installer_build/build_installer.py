@@ -11,6 +11,12 @@ import sys
 import zipfile
 from pathlib import Path
 
+for _stream in (sys.stdout, sys.stderr):
+    try:
+        _stream.reconfigure(encoding="utf-8", errors="replace")
+    except Exception:
+        pass
+
 ROOT = Path(__file__).resolve().parents[1]
 DIST = ROOT / "dist" / "MCHOSEBatteryWidget"
 PAYLOAD = ROOT / "installer_build" / "payload.zip"
