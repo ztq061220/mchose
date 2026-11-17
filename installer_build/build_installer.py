@@ -17,6 +17,7 @@ PAYLOAD = ROOT / "installer_build" / "payload.zip"
 INSTALLER_CS = ROOT / "installer_build" / "Installer.cs"
 RELEASE = ROOT / "release"
 OUTPUT = RELEASE / "桌面外设电量_安装程序_v1.6.4.exe"
+COMPILE_OUTPUT = RELEASE / "installer_unsigned.exe"
 USAGE = ROOT / "使用说明.txt"
 
 
@@ -57,7 +58,8 @@ def compile_installer(csc: Path) -> None:
         str(csc),
         "/nologo",
         "/target:winexe",
-        f"/out:{OUTPUT}",
+        "/codepage:65001",
+        f"/out:{COMPILE_OUTPUT}",
         "/r:System.dll",
         "/r:System.Core.dll",
         "/r:System.Windows.Forms.dll",
@@ -70,6 +72,10 @@ def compile_installer(csc: Path) -> None:
     ]
     print("running:", subprocess.list2cmdline(cmd))
     subprocess.run(cmd, check=True, cwd=str(ROOT))
+    if COMPILE_OUTPUT != OUTPUT:
+        if OUTPUT.exists():
+            OUTPUT.unlink()
+        COMPILE_OUTPUT.replace(OUTPUT)
     digest = hashlib.sha256(OUTPUT.read_bytes()).hexdigest()
     print(f"installer: {OUTPUT} ({OUTPUT.stat().st_size / 1024 / 1024:.2f} MiB)")
     print(f"sha256: {digest}")
